@@ -1,132 +1,174 @@
-# resilient-agent-invariants
-
-## Autonomous AI Agent Runtime Infrastructure
+Autonomous AI Agent Runtime Infrastructure
 The 12 Pillars of Production Reliability for Enterprise Agent Systems
+Most AI agent frameworks are designed for local demos where surviving five conversational turns feels like a breakthrough. They crumble under live enterprise traffic. Autonomous agents are not lightweight HTTP requests; they are probabilistic, resource-heavy, distributed state machines that run for minutes, consume variable compute, and trigger physical state mutations across external APIs.
 
-Most AI agent frameworks are built for quick local demos where running five turns without crashing feels like a victory. They fall apart under real enterprise production traffic. Autonomous agents are not lightweight web requests; they are probabilistic, resource-heavy, distributed processes that run for minutes, consume unpredictable memory, and make real-world mutations across external APIs.
+This repository provides a zero-dependency, drop-in suite of distributed systems patterns designed specifically for autonomous agent runtimes. Each pattern targets a specific physical failure mode: context window explosion, memory leaks, dropped network sockets, database connection pool exhaustion, thundering herd retry storms, and unbudgeted inference spend.
 
-This repository provides zero-dependency, production-grade distributed systems patterns designed specifically for AI agent runtimes. Every pattern addresses a specific physical failure point in computing: context explosion, memory leaks, dropped network sockets, database lockouts, retry storms, and unbudgeted inference spend.
+Pattern Catalog & Directory Index
+01. Memory Boundary (patterns/01-memory-blackboard/)
+Enforces an O(1) epistemic state machine that stores verified facts in a persistent blackboard and evicts conversational scratchpad chatter before token costs compound quadratically.
 
-## Repository Structure and Pattern Catalog
+02. Information Plane CQRS (patterns/02-information-plane-cqrs/)
+Separates large data retrieval from prompt context using embedded DuckDB in local RAM. The agent queries data using SQL without stuffing raw tables into the context window.
 
-Pattern 01: Memory Boundary and Blackboard State
+03. Durable Execution (patterns/03-durable-checkpoint-resume/)
+Wraps steps in a persistent state ledger backed by content-addressable storage pointers. Interrupted workers resume at the exact step boundary without duplicate model calls.
+
+04. Network Guardrails (patterns/04-network-idempotency/)
+Derives deterministic SHA-256 idempotency keys, classifies transient versus terminal errors, applies jitter backoff, and reconciles remote state to eliminate phantom double-charges.
+
+05. Distributed State (patterns/05-distributed-sagas/)
+Maintains an append-only compensation stack. If a multi-step operation fails midway, rollback routines execute in reverse LIFO order to unwind external side-effects cleanly.
+
+06. Host OS Boundary (patterns/06-process-isolation/)
+Runs code execution, Python scripts, and native tool libraries in child processes over isolated IPC pipes. Hard segfaults and memory leaks are contained without crashing the host Node.js server.
+
+07. Execution Termination (patterns/07-execution-termination/)
+Combines admission concurrency gates, bounded queues with backpressure, three-state circuit breakers, and hard execution deadlines via native AbortController to survive traffic spikes.
+
+08. Capability Leases (patterns/08-capability-leases/)
+Binds permissions to workflow states rather than agent identity. Issues time-bounded, resource-scoped capability leases and releases long-lived database connection locks before token streaming.
+
+09. Batch API Unrolling (patterns/09-batch-unrolling/)
+Buffers requests in a 40ms speculative window. When an external bulk endpoint rejects a batch due to one agent's malformed record (HTTP 400), it unrolls into single requests so healthy agents succeed.
+
+11. Unit Economics (patterns/11-unit-economics/)
+Wraps tasks in immutable dollar-denominated budget envelopes. Tracks token usage against pricing tables in real time, cascades reasoning models from frontier to lightweight tiers, and terminates runaway loops.
+
+12. Event Compaction (patterns/12-event-compaction/)
+Offloads tool payloads larger than 250 bytes to object storage using SHA-256 claim-check tickets. Terminal compaction squashes intermediate reasoning loops into a 4KB audit delta.
+
+Detailed Pattern Architecture
+01. Memory Boundary & Blackboard State
 Folder: patterns/01-memory-blackboard/
-Files: blackboard.ts, repro.test.ts, README.md
-Protects: The LLM context window.
-Enforces an O(1) epistemic state machine that stores verified facts in a persistent blackboard and aggressively evicts conversational scratchpad chatter before token costs compound quadratically.
 
-Pattern 02: Information Plane CQRS
+Artifacts: blackboard.ts, repro.test.ts, README.md
+
+Mechanism: Separates working memory into an epistemic state machine (known facts, verified hypotheses, active blockers) and aggressively evicts conversational scratchpad chatter after every tool dispatch. Prevents quadratic context growth.
+
+02. Information Plane CQRS
 Folder: patterns/02-information-plane-cqrs/
-Files: demo.py, query.sql, README.md
-Protects: Prompt data transit boundaries.
-Separates large data retrieval from prompt context using embedded DuckDB in local RAM. The agent queries and filters millions of rows using SQL without stuffing raw database tables into the language model.
 
-Pattern 03: Durable Execution and Artifact Pointers
+Artifacts: demo.py, query.sql, README.md
+
+Mechanism: Decouples raw business data transit from the prompt boundary using an embedded in-memory OLAP engine (DuckDB). The agent inspects schemas, synthesizes targeted SQL, and extracts scalar answers directly in local RAM without dumping 10,000 JSON rows into the LLM context.
+
+03. Durable Execution & Artifact Pointers
 Folder: patterns/03-durable-checkpoint-resume/
-Files: engine.ts, kill-test.ts, README.md
-Protects: Worker lifecycles and recovery costs.
-Wraps execution steps in a persistent state ledger. When a server container crashes halfway through a twenty-minute job, it resumes directly at the unfinished step with zero duplicate model calls or wasted compute.
 
-Pattern 04: Network Guardrails and Deterministic Idempotency
+Artifacts: engine.ts, kill-test.ts, README.md
+
+Mechanism: Wraps each atomic step in a write-ahead checkpoint ledger backed by a content-addressable storage pointer. If a container reboots on step 14 of 20, the worker hydrates from the exact state boundary with zero duplicate model calls or re-executed mutations.
+
+04. Network Guardrails & Deterministic Idempotency
 Folder: patterns/04-network-idempotency/
-Files: gateway.ts, repro.test.ts, README.md
-Protects: External third-party state (banks, CRMs, cloud resources).
-Derives deterministic SHA-256 idempotency keys, separates temporary network blips from permanent 400 errors, adds decorrelated jitter backoff, and runs out-of-band reconciliation to prevent phantom double-billing when network connections drop mid-flight.
 
-Pattern 05: Distributed State and LIFO Compensation Sagas
+Artifacts: gateway.ts, repro.test.ts, README.md
+
+Mechanism: Derives deterministic SHA-256 idempotency keys from the workflow ID, step name, and canonical payload. Classifies errors (transient vs. terminal), applies full decorrelated jitter backoff, and runs out-of-band state lookups before retrying dropped connections to prevent duplicate transactions.
+
+05. Distributed State & LIFO Sagas
 Folder: patterns/05-distributed-sagas/
-Files: saga.ts, repro.test.ts, README.md
-Protects: Multi-service business consistency.
-Maintains an in-memory compensation stack. If a five-step provisioning workflow fails at step four, the engine automatically executes rollback routines in reverse order to release reserved resources and refund pending charges.
 
-Pattern 06: Host OS Boundary and Process Isolation
+Artifacts: saga.ts, repro.test.ts, README.md
+
+Mechanism: Tracks forward mutations on an append-only compensation stack. If a five-step provisioning workflow fails halfway through, the coordinator walks backwards in strict Last-In, First-Out (LIFO) order, executing compensating transactions to release provisioned infrastructure, void authorizations, and clean up orphaned state.
+
+06. Host OS Boundary & Process Isolation
 Folder: patterns/06-process-isolation/
-Files: supervisor.ts, worker.ts, repro.test.ts, README.md
-Protects: The Node.js server and Linux kernel.
-Runs untrusted Python scripts, WASM binaries, and native tool libraries inside isolated child processes with IPC pipes. Hard segfaults, memory leaks, and infinite loops are contained and recycled without taking down the main server.
 
-Pattern 07: Execution Termination and Load Shedding
+Artifacts: supervisor.ts, worker.ts, repro.test.ts, README.md
+
+Mechanism: Isolates code-execution engines, untrusted scripts, and native C/C++ tools inside dedicated child processes communicated over isolated IPC pipes. Catches hard SIGSEGV native crashes, memory leaks, and infinite loops at the operating system boundary without crashing the parent runtime.
+
+07. Execution Termination & Admission Control
 Folder: patterns/07-execution-termination/
-Files: engine.ts, repro.test.ts, README.md
-Protects: Server CPU, queue memory, and downstream services.
-Combines admission concurrency gates, bounded queues that shed excess load via backpressure, three-state circuit breakers that stop hammering broken APIs, and hard execution deadlines that kill zombie workers.
 
-Pattern 08: Action Permission Boundaries and Zero-Hold Resource Leases
+Artifacts: engine.ts, repro.test.ts, README.md
+
+Mechanism: Combines admission concurrency semaphores, bounded queues that shed excess load via backpressure, three-state distributed circuit breakers, and hard execution deadlines via native AbortController to survive traffic spikes without cascading outages.
+
+08. Action Permission Boundaries & Zero-Hold Leases
 Folder: patterns/08-capability-leases/
-Files: engine.ts, lease.ts, repro.test.ts, README.md
-Protects: Database connection pools and company-wide security surfaces.
-Releases SQL connection leases before starting long-running model token streams. Enforces state-gated permission matrices that issue temporary, scoped leases for unlisted tools and wipes them when state advances.
 
-Pattern 09: Batch API Poison Pills and Dynamic Unrolling
+Artifacts: engine.ts, lease.ts, repro.test.ts, README.md
+
+Mechanism: Prevents prompt-injection lateral movement by binding capabilities to workflow states rather than the agent's identity. Issues time-bounded, resource-scoped capability leases on demand and releases long-lived database connection locks before initiating streaming LLM calls.
+
+09. Batch API Poison Pills & Dynamic Unrolling
 Folder: patterns/09-batch-unrolling/
-Files: engine.ts, repro.test.ts, README.md
-Protects: Multi-tenant batch queues and SLA uptime.
-Buffers requests in a 40ms speculative window. When an external bulk endpoint fails with an HTTP 400 error due to one agent hallucinating an invalid record, the gateway dynamically unrolls the batch into single requests so the forty-nine healthy agents succeed without delay.
 
-Pattern 11: Unit Economics Runtime and Enveloped Budgets
+Artifacts: engine.ts, repro.test.ts, README.md
+
+Mechanism: Collects tool dispatches across concurrent sessions inside a 40ms speculative window. If a bulk endpoint rejects the entire batch due to a single agent's hallucinated parameter (HTTP 400), the gateway catches the rejection and unrolls the batch into parallel single requests, isolating the failure to the broken agent while the healthy operations proceed.
+
+11. Unit Economics Runtime & Enveloped Budgets
 Folder: patterns/11-unit-economics/
-Files: engine.ts, repro.test.ts, README.md
-Protects: Company gross margins and balance sheets.
-Wraps tasks in immutable financial envelopes. An in-flight decrementing ledger debits exact token usage against provider rate cards in real time, automatically downgrades models from frontier to lightweight tiers as runway thins, and trips a non-catchable kill switch when the budget hits zero.
 
-Pattern 12: Event Compaction and State Pruning
+Artifacts: engine.ts, repro.test.ts, README.md
+
+Mechanism: Wraps every execution in an immutable dollar-denominated envelope. Tracks token consumption against provider pricing tables in real time, dynamically cascades reasoning from frontier models down to lightweight models as margins compress, and triggers a hard circuit breaker if a loop exhausts its budget.
+
+12. Event Compaction & Pruning
 Folder: patterns/12-event-compaction/
-Files: compactor.ts, repro.test.ts, README.md
-Protects: Primary database disks, IOPS capacity, and storage bills.
-Replaces bulky tool responses with SHA-256 claim-check tickets in object storage and runs post-execution log compaction that squashes multi-megabyte reasoning loops into lean four-kilobyte audit snapshots for long-term SOC2 compliance.
 
+Artifacts: compactor.ts, repro.test.ts, README.md
+
+Mechanism: Eliminates database write amplification by offloading tool payloads larger than 250 bytes to object storage using SHA-256 claim-check tickets. Runs terminal log compaction to squash intermediate reasoning loops into a 4KB audit delta containing only the input, committed side effects, and final output.
+
+Getting Started
 Prerequisites
+Node.js: v18.0.0 or higher
 
-Node.js version 18 or higher
-TypeScript and ts-node:
+TypeScript & ts-node:
+
+Bash
 npm install -D typescript ts-node @types/node
+Python (for Pattern 02):
 
-For Pattern 02 (Information Plane CQRS):
-Python 3.10+ and duckdb:
+Bash
 pip install duckdb
+Running the Chaos Test Suites
+Every pattern directory includes an isolated, executable test script that injects deliberate network partitions, process faults, or payload poison pills to verify that the runtime boundaries hold.
 
-How to Run the Chaos Test Suites
-
-Every pattern directory contains an isolated reproduction script that injects network failures, process crashes, or poison pills to prove that the architecture survives distributed system failures.
-
-To run individual tests:
-
-Pattern 01 (Blackboard Context Bound):
+Bash
+# Pattern 01: Memory Boundary (O(1) Blackboard Invariant)
 npx ts-node patterns/01-memory-blackboard/repro.test.ts
 
-Pattern 03 (Checkpoint Kill Test):
+# Pattern 02: Information Plane CQRS (DuckDB Token Reduction)
+python patterns/02-information-plane-cqrs/demo.py
+
+# Pattern 03: Durable Execution (SIGKILL Mid-Step Resume)
 npx ts-node patterns/03-durable-checkpoint-resume/kill-test.ts
 
-Pattern 04 (Network Socket Drop Repro):
+# Pattern 04: Network Guardrails (Dropped Socket & Deduplication)
 npx ts-node patterns/04-network-idempotency/repro.test.ts
 
-Pattern 05 (Saga LIFO Rollback Repro):
+# Pattern 05: Distributed Sagas (LIFO Compensating Rollback)
 npx ts-node patterns/05-distributed-sagas/repro.test.ts
 
-Pattern 06 (Native Segfault Containment Repro):
+# Pattern 06: Process Isolation (Native SIGSEGV Containment)
 npx ts-node patterns/06-process-isolation/repro.test.ts
 
-Pattern 07 (Spike Surge and Circuit Breaker Repro):
+# Pattern 07: Execution Termination (Load Shedding & Circuit Breaker)
 npx ts-node patterns/07-execution-termination/repro.test.ts
 
-Pattern 08 (Scoped Permission Lease Repro):
+# Pattern 08: Capability Leases (Scope Escaping & Zero-Hold Sockets)
 npx ts-node patterns/08-capability-leases/repro.test.ts
 
-Pattern 09 (Batch Poison Pill Isolation Repro):
+# Pattern 09: Batch Unrolling (Poison Pill Isolation)
 npx ts-node patterns/09-batch-unrolling/repro.test.ts
 
-Pattern 11 (Unit Economics Budget Repro):
+# Pattern 11: Unit Economics (In-Flight Budget Kill Switch)
 npx ts-node patterns/11-unit-economics/repro.test.ts
 
-Pattern 12 (Log Compaction Benchmark):
+# Pattern 12: Event Compaction (Claim-Check Offloading & Squashing)
 npx ts-node patterns/12-event-compaction/repro.test.ts
+Architectural Principles
+System Guarantees Over System Prompts: A prompt instruction is a non-deterministic request; a runtime boundary is an enforceable physical law. Never rely on the LLM to govern its own safety, rate limits, or budgets.
 
-Core Engineering Invariants
+Network Timeouts Are Not Business Failures: An HTTP socket reset means connectivity was lost, not that the remote server failed to commit the mutation. Bind every mutating operation to a deterministic identity and verify reality before retrying.
 
-Do not ask the language model to manage its own reliability. A prompt instruction is a polite suggestion; a distributed systems runtime is an unyielding law.
+Keep Ephemeral State Out of Primary Storage: Treat intermediate scratchpad reasoning as hot, volatile cache. Persist only the minimal committed delta to transactional databases.
 
-An HTTP socket failure does not mean the business operation failed. Separate request outcomes from external state mutations using deterministic idempotency keys and active reconciliation.
-
-Keep temporary reasoning out of permanent databases. Keep intermediate thoughts in fast memory, offload large payloads using cryptographic hash pointers, and squash audit trails the millisecond tasks complete.
-
-Kill tests beat architectural claims. If an agent framework cannot survive a SIGKILL command halfway through a workflow without losing state or double-billing a customer, it is not ready for enterprise production.
+Assume Hostility at Every Integration Boundary: Child tools crash with segfaults, third-party APIs experience outages, downstream bulk endpoints reject good inputs, and models hallucinate bad schemas. Build runtimes that isolate blast radiuses to individual frames.
