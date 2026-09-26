@@ -4,7 +4,7 @@ This folder stops your agents from double-charging credit cards, duplicating dat
 
 Files in this directory:
 
-1. gateway.ts
+1. guardrail-engine.ts
 The core guardrail engine. It creates deterministic SHA-256 keys from the workflow ID, step name, and payload so every retry shares the exact same fingerprint. It also checks whether an error is a temporary network blip or a permanent 400 error, adds random jitter to retries, tracks mutations in a local write-ahead ledger, and runs out-of-band lookups to check if a dropped request actually went through on the remote server.
 2. repro.test.ts
 The chaos test suite. It simulates a payment provider charging five hundred dollars and then intentionally dropping the connection right before returning the 200 OK. It also tests what happens when an agent sends a broken payload.
