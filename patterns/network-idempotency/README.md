@@ -83,4 +83,4 @@ A network request failure is not proof that the business operation failed. A net
 
 Once an autonomous agent has the authority to spend company money, change database rows, or modify cloud infrastructure, you cannot leave recovery to an unpredictable language model or a naive retry loop. Separate transient errors from terminal failures, stamp every mutation with a deterministic fingerprint, and reconcile remote reality before sending a second request. That is how you stop phantom cloud bills, eliminate duplicate customer charges, and build agent workflows that survive real-world distributed networks.
 
-(All runnable TypeScript implementations, test suites, and chaos failure benchmarks for this pattern are available in the open-source repository).
+(A runnable TypeScript implementation, test suite, and chaos failure benchmark for this pattern are available in the open-source repository).
