@@ -1,0 +1,4 @@
+node_modules/
+dist/
+AUDIT_REPORT.md
+PATTERNS_AUDIT.md

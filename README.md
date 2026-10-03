@@ -4,115 +4,117 @@ Most AI agent frameworks are designed for local demos where surviving five conve
 
 This repository provides a zero-dependency, drop-in suite of distributed systems patterns designed specifically for autonomous agent runtimes. Each pattern targets a specific physical failure mode: context window explosion, memory leaks, dropped network sockets, database connection pool exhaustion, thundering herd retry storms, and unbudgeted inference spend.
 
+## 🛠️ CLI Tool: Invariant Linter & Trace Auditor
+We provide a zero-egress, local CLI that audits agent code and JSON traces against distributed systems reliability invariants.
+👉 See [AGENT_INVARIANTS.md](./AGENT_INVARIANTS.md) for full usage, rules matrix, and CI integration.
+
 Pattern Catalog & Directory Index
-01. Memory Boundary (patterns/01-memory-blackboard/)
+Folder names below match what is on disk in patterns/. Pillars 07 and 10 have no folder in this repo yet.
+
+01. Memory Boundary (patterns/blackboard/)
 Enforces an O(1) epistemic state machine that stores verified facts in a persistent blackboard and evicts conversational scratchpad chatter before token costs compound quadratically.
 
-02. Information Plane CQRS (patterns/02-information-plane-cqrs/)
+02. Information Plane CQRS (patterns/0-and-infinite-tools/)
 Separates large data retrieval from prompt context using embedded DuckDB in local RAM. The agent queries data using SQL without stuffing raw tables into the context window.
 
-03. Durable Execution (patterns/03-durable-checkpoint-resume/)
+03. Durable Execution (patterns/durable-execution/)
 Wraps steps in a persistent state ledger backed by content-addressable storage pointers. Interrupted workers resume at the exact step boundary without duplicate model calls.
 
-04. Network Guardrails (patterns/04-network-idempotency/)
+04. Network Guardrails (patterns/network-idempotency/)
 Derives deterministic SHA-256 idempotency keys, classifies transient versus terminal errors, applies jitter backoff, and reconciles remote state to eliminate phantom double-charges.
 
-05. Distributed State (patterns/05-distributed-sagas/)
+05. Distributed State (patterns/distributed-sagas/)
 Maintains an append-only compensation stack. If a multi-step operation fails midway, rollback routines execute in reverse LIFO order to unwind external side-effects cleanly.
 
-06. Host OS Boundary (patterns/06-process-isolation/)
+06. Host OS Boundary (patterns/process-isolation/)
 Runs code execution, Python scripts, and native tool libraries in child processes over isolated IPC pipes. Hard segfaults and memory leaks are contained without crashing the host Node.js server.
 
-07. Execution Termination (patterns/07-execution-termination/)
-Combines admission concurrency gates, bounded queues with backpressure, three-state circuit breakers, and hard execution deadlines via native AbortController to survive traffic spikes.
+07. Execution Termination (not yet in this repo)
+Planned: admission concurrency gates, bounded queues with backpressure, three-state circuit breakers, and hard execution deadlines via native AbortController.
 
-08. Capability Leases (patterns/08-capability-leases/)
+08. Capability Leases (patterns/permission-lock/ and patterns/zero-hold-leases/)
 Binds permissions to workflow states rather than agent identity. Issues time-bounded, resource-scoped capability leases and releases long-lived database connection locks before token streaming.
 
-09. Batch API Unrolling (patterns/09-batch-unrolling/)
+09. Batch API Unrolling (patterns/batch-enrolling/)
 Buffers requests in a 40ms speculative window. When an external bulk endpoint rejects a batch due to one agent's malformed record (HTTP 400), it unrolls into single requests so healthy agents succeed.
 
-11. Unit Economics (patterns/11-unit-economics/)
+11. Unit Economics (patterns/unit-economics/)
 Wraps tasks in immutable dollar-denominated budget envelopes. Tracks token usage against pricing tables in real time, cascades reasoning models from frontier to lightweight tiers, and terminates runaway loops.
 
-12. Event Compaction (patterns/12-event-compaction/)
+12. Event Compaction (patterns/event-compaction/)
 Offloads tool payloads larger than 250 bytes to object storage using SHA-256 claim-check tickets. Terminal compaction squashes intermediate reasoning loops into a 4KB audit delta.
 
 Detailed Pattern Architecture
 01. Memory Boundary & Blackboard State
-Folder: patterns/01-memory-blackboard/
+Folder: patterns/blackboard/
 
-Artifacts: blackboard.ts, repro.test.ts, README.md
+Artifacts: README.md
 
 Mechanism: Separates working memory into an epistemic state machine (known facts, verified hypotheses, active blockers) and aggressively evicts conversational scratchpad chatter after every tool dispatch. Prevents quadratic context growth.
 
 02. Information Plane CQRS
-Folder: patterns/02-information-plane-cqrs/
+Folder: patterns/0-and-infinite-tools/
 
-Artifacts: demo.py, query.sql, README.md
+Artifacts: demo.py, README.md
 
 Mechanism: Decouples raw business data transit from the prompt boundary using an embedded in-memory OLAP engine (DuckDB). The agent inspects schemas, synthesizes targeted SQL, and extracts scalar answers directly in local RAM without dumping 10,000 JSON rows into the LLM context.
 
 03. Durable Execution & Artifact Pointers
-Folder: patterns/03-durable-checkpoint-resume/
+Folder: patterns/durable-execution/
 
 Artifacts: engine.ts, kill-test.ts, README.md
 
 Mechanism: Wraps each atomic step in a write-ahead checkpoint ledger backed by a content-addressable storage pointer. If a container reboots on step 14 of 20, the worker hydrates from the exact state boundary with zero duplicate model calls or re-executed mutations.
 
 04. Network Guardrails & Deterministic Idempotency
-Folder: patterns/04-network-idempotency/
+Folder: patterns/network-idempotency/
 
-Artifacts: gateway.ts, repro.test.ts, README.md
+Artifacts: guardrail-engine.ts, chaos-suite-test.ts, IMPLEMENT.md, README.md
 
 Mechanism: Derives deterministic SHA-256 idempotency keys from the workflow ID, step name, and canonical payload. Classifies errors (transient vs. terminal), applies full decorrelated jitter backoff, and runs out-of-band state lookups before retrying dropped connections to prevent duplicate transactions.
 
 05. Distributed State & LIFO Sagas
-Folder: patterns/05-distributed-sagas/
+Folder: patterns/distributed-sagas/
 
-Artifacts: saga.ts, repro.test.ts, README.md
+Artifacts: coordinator.ts, repro.test.ts, README.md
 
 Mechanism: Tracks forward mutations on an append-only compensation stack. If a five-step provisioning workflow fails halfway through, the coordinator walks backwards in strict Last-In, First-Out (LIFO) order, executing compensating transactions to release provisioned infrastructure, void authorizations, and clean up orphaned state.
 
 06. Host OS Boundary & Process Isolation
-Folder: patterns/06-process-isolation/
+Folder: patterns/process-isolation/
 
-Artifacts: supervisor.ts, worker.ts, repro.test.ts, README.md
+Artifacts: demo-supervisor.ts, demo-worker.ts, README.md
 
 Mechanism: Isolates code-execution engines, untrusted scripts, and native C/C++ tools inside dedicated child processes communicated over isolated IPC pipes. Catches hard SIGSEGV native crashes, memory leaks, and infinite loops at the operating system boundary without crashing the parent runtime.
 
 07. Execution Termination & Admission Control
-Folder: patterns/07-execution-termination/
-
-Artifacts: engine.ts, repro.test.ts, README.md
-
-Mechanism: Combines admission concurrency semaphores, bounded queues that shed excess load via backpressure, three-state distributed circuit breakers, and hard execution deadlines via native AbortController to survive traffic spikes without cascading outages.
+Not yet in this repo (no folder).
 
 08. Action Permission Boundaries & Zero-Hold Leases
-Folder: patterns/08-capability-leases/
+Folders: patterns/permission-lock/, patterns/zero-hold-leases/
 
-Artifacts: engine.ts, lease.ts, repro.test.ts, README.md
+Artifacts: permission-lock/engine.ts, permission-lock/repro-test.ts, permission-lock/demo.md, zero-hold-leases/lease.ts, zero-hold-leases/repro-test.ts, README.md in each
 
 Mechanism: Prevents prompt-injection lateral movement by binding capabilities to workflow states rather than the agent's identity. Issues time-bounded, resource-scoped capability leases on demand and releases long-lived database connection locks before initiating streaming LLM calls.
 
 09. Batch API Poison Pills & Dynamic Unrolling
-Folder: patterns/09-batch-unrolling/
+Folder: patterns/batch-enrolling/
 
-Artifacts: engine.ts, repro.test.ts, README.md
+Artifacts: engine.ts, repro.test.ts, demo.md, README.md
 
 Mechanism: Collects tool dispatches across concurrent sessions inside a 40ms speculative window. If a bulk endpoint rejects the entire batch due to a single agent's hallucinated parameter (HTTP 400), the gateway catches the rejection and unrolls the batch into parallel single requests, isolating the failure to the broken agent while the healthy operations proceed.
 
 11. Unit Economics Runtime & Enveloped Budgets
-Folder: patterns/11-unit-economics/
+Folder: patterns/unit-economics/
 
-Artifacts: engine.ts, repro.test.ts, README.md
+Artifacts: engine.ts, repro.test.ts, demo.md, README.md
 
 Mechanism: Wraps every execution in an immutable dollar-denominated envelope. Tracks token consumption against provider pricing tables in real time, dynamically cascades reasoning from frontier models down to lightweight models as margins compress, and triggers a hard circuit breaker if a loop exhausts its budget.
 
 12. Event Compaction & Pruning
-Folder: patterns/12-event-compaction/
+Folder: patterns/event-compaction/
 
-Artifacts: compactor.ts, repro.test.ts, README.md
+Artifacts: compactor.ts, repro.test.ts, demo.md, README.md
 
 Mechanism: Eliminates database write amplification by offloading tool payloads larger than 250 bytes to object storage using SHA-256 claim-check tickets. Runs terminal log compaction to squash intermediate reasoning loops into a 4KB audit delta containing only the input, committed side effects, and final output.
 
@@ -128,42 +130,37 @@ Python (for Pattern 02):
 
 Bash
 pip install duckdb
-Running the Chaos Test Suites
-Every pattern directory includes an isolated, executable test script that injects deliberate network partitions, process faults, or payload poison pills to verify that the runtime boundaries hold.
+Running the Demos and Chaos Test Suites
+Pattern directories include executable scripts that inject deliberate network partitions, process faults, or payload poison pills to verify that the runtime boundaries hold. Not every folder has one; see the Artifacts lines above.
 
 Bash
-# Pattern 01: Memory Boundary (O(1) Blackboard Invariant)
-npx ts-node patterns/01-memory-blackboard/repro.test.ts
-
 # Pattern 02: Information Plane CQRS (DuckDB Token Reduction)
-python patterns/02-information-plane-cqrs/demo.py
+python patterns/0-and-infinite-tools/demo.py
 
 # Pattern 03: Durable Execution (SIGKILL Mid-Step Resume)
-npx ts-node patterns/03-durable-checkpoint-resume/kill-test.ts
+npx ts-node patterns/durable-execution/kill-test.ts
 
 # Pattern 04: Network Guardrails (Dropped Socket & Deduplication)
-npx ts-node patterns/04-network-idempotency/repro.test.ts
+npx ts-node patterns/network-idempotency/chaos-suite-test.ts
 
 # Pattern 05: Distributed Sagas (LIFO Compensating Rollback)
-npx ts-node patterns/05-distributed-sagas/repro.test.ts
+npx ts-node patterns/distributed-sagas/repro.test.ts
 
 # Pattern 06: Process Isolation (Native SIGSEGV Containment)
-npx ts-node patterns/06-process-isolation/repro.test.ts
-
-# Pattern 07: Execution Termination (Load Shedding & Circuit Breaker)
-npx ts-node patterns/07-execution-termination/repro.test.ts
+npx ts-node patterns/process-isolation/demo-supervisor.ts
 
 # Pattern 08: Capability Leases (Scope Escaping & Zero-Hold Sockets)
-npx ts-node patterns/08-capability-leases/repro.test.ts
+npx ts-node patterns/permission-lock/repro-test.ts
+npx ts-node patterns/zero-hold-leases/repro-test.ts
 
 # Pattern 09: Batch Unrolling (Poison Pill Isolation)
-npx ts-node patterns/09-batch-unrolling/repro.test.ts
+npx ts-node patterns/batch-enrolling/repro.test.ts
 
 # Pattern 11: Unit Economics (In-Flight Budget Kill Switch)
-npx ts-node patterns/11-unit-economics/repro.test.ts
+npx ts-node patterns/unit-economics/repro.test.ts
 
 # Pattern 12: Event Compaction (Claim-Check Offloading & Squashing)
-npx ts-node patterns/12-event-compaction/repro.test.ts
+npx ts-node patterns/event-compaction/repro.test.ts
 Architectural Principles
 System Guarantees Over System Prompts: A prompt instruction is a non-deterministic request; a runtime boundary is an enforceable physical law. Never rely on the LLM to govern its own safety, rate limits, or budgets.
 

@@ -1,0 +1,16 @@
+{
+  "name": "agent-invariants",
+  "version": "0.1.0",
+  "description": "Local, zero-egress linter for agent code and traces. Audits distributed-systems invariants.",
+  "private": true,
+  "bin": { "agent-invariants": "./bin/agent-invariants.ts" },
+  "scripts": {
+    "audit": "ts-node bin/agent-invariants.ts audit",
+    "test": "node --test --require ts-node/register tests/cli.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  }
+}

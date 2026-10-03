@@ -2,7 +2,15 @@
 # Run pip install duck db
 #python demo.py 
 
-import duckdb
+import sys
+
+try:
+    import duckdb
+except ImportError:
+    print("[SKIPPED] Optional dependency 'duckdb' is not installed.")
+    print("          Install it with:  pip install duckdb")
+    print("          then re-run:      python patterns/0-and-infinite-tools/demo.py")
+    sys.exit(0)
 
 def run_benchmark():
     print("=" * 60)

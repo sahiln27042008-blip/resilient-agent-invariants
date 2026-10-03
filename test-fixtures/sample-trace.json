@@ -1,0 +1,17 @@
+{
+  "run_id": "run_fixture_001",
+  "steps": [
+    { "step": 1, "tool": "get_user", "method": "GET", "payload_bytes": 120 },
+    { "step": 2, "tool": "list_orders", "method": "GET", "payload_bytes": 200, "db_connection_held_ms": 2400 },
+    { "step": 3, "tool": "fetch_invoice", "method": "GET", "payload_bytes": 4800 },
+    { "step": 4, "tool": "charge_card", "method": "POST", "mutating": true, "payload_bytes": 180 },
+    { "step": 5, "tool": "create_vm", "method": "POST", "mutating": true, "payload_bytes": 220 },
+    {
+      "step": 6,
+      "tool": "get_report",
+      "method": "GET",
+      "payload_bytes": 9000,
+      "claim_check": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    }
+  ]
+}

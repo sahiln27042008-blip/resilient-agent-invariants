@@ -12,7 +12,9 @@ export class ToolSupervisor {
   private pendingTasks = new Map<string, PendingTask>();
   private workerScriptPath: string;
 
-  constructor(workerScriptPath = resolve(__dirname, "./worker.ts")) {
+  private destroyed = false;
+
+  constructor(workerScriptPath = resolve(__dirname, "demo-worker.ts")) {
     this.workerScriptPath = workerScriptPath;
     this.spawnWorker();
   }
@@ -53,6 +55,7 @@ export class ToolSupervisor {
       this.pendingTasks.clear();
 
       // Immediately respawn fresh worker
+      if (this.destroyed) return;
       console.log("[SUPERVISOR] Parent server intact. Booting fresh worker sandbox...");
       this.spawnWorker();
     });
@@ -75,6 +78,32 @@ export class ToolSupervisor {
   }
 
   public destroy(): void {
+    this.destroyed = true;
     this.worker.kill("SIGTERM");
   }
+}
+
+
+// Standalone demo: npx ts-node patterns/process-isolation/demo-supervisor.ts
+if (require.main === module) {
+  (async () => {
+    console.log("=== PROCESS ISOLATION DEMO ===");
+    console.log(`[PARENT] pid=${process.pid} (must survive the worker crash)`);
+    const sup = new ToolSupervisor();
+    try {
+      console.log("[PARENT] safe task ->", await sup.runTool("echo_hello"));
+      try {
+        await sup.runTool("HARD_CRASH");
+      } catch (err) {
+        console.log(`[PARENT] crash contained: ${(err as Error).message}`);
+      }
+      console.log("[PARENT] task after crash ->", await sup.runTool("echo_after_crash"));
+      console.log(`[INVARIANT VERIFIED] Parent pid=${process.pid} alive; worker SIGABRT did not take down the host.`);
+    } catch (err) {
+      console.error("[DEMO FAILED]", err);
+      process.exitCode = 1;
+    } finally {
+      sup.destroy();
+    }
+  })();
 }
